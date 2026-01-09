@@ -1,4 +1,5 @@
 import pandas as pd
+import time
 
 OUTPUT_FILE = "nhl_players.csv"
 SEASON = 2024
@@ -39,7 +40,6 @@ TEAMS = {
 
 def main():
     print("Stahuji NHL data z hockey-reference.com")
-
     rows = []
 
     for abbr, team_name in TEAMS.items():
@@ -69,13 +69,17 @@ def main():
             df = df.dropna()
             rows.append(df)
 
+            time.sleep(1)  # proti 429
+
         except Exception as e:
-            print(f"⚠️ Chyba u týmu {team_name}: {e}")
+            print(f"⚠️ Přeskočeno ({team_name}): {e}")
+            continue
 
-    if not rows:
-        raise RuntimeError("Nepodařilo se načíst žádná data")
+    if rows:
+        final_df = pd.concat(rows, ignore_index=True)
+    else:
+        final_df = pd.DataFrame(columns=["team", "player", "games", "goals", "points"])
 
-    final_df = pd.concat(rows, ignore_index=True)
     final_df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8")
 
     print(f"HOTOVO – hráčů: {len(final_df)}")
