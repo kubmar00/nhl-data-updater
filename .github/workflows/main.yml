@@ -2,15 +2,13 @@ name: Update NHL Data
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * *"
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -20,7 +18,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas numpy requests
+          python -m pip install --upgrade pip
+          pip install pandas lxml html5lib
 
       - name: Run updater
         run: |
