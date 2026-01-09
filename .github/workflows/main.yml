@@ -1,0 +1,33 @@
+name: Update NHL Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy requests
+
+      - name: Run updater
+        run: |
+          python update_nhl_data.py
+
+      - name: Upload CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl_players_csv
+          path: nhl_players.csv
