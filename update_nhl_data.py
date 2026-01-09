@@ -1,90 +1,83 @@
 import requests
 import pandas as pd
-import time
+from datetime import datetime
 
 OUTPUT_FILE = "nhl_players.csv"
 
-def safe_div(a, b):
-    return round(a / b, 3) if b > 0 else 0
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+def get_teams():
+    url = "https://api-web.nhle.com/v1/standings/now"
+    data = requests.get(url, headers=HEADERS, timeout=20).json()
+    teams = []
+    for t in data["standings"]:
+        teams.append({
+            "id": t["teamAbbrev"]["default"],
+            "name": t["teamName"]["default"]
+        })
+    return teams
+
+def get_roster(team_abbrev):
+    url = f"https://api-web.nhle.com/v1/roster/{team_abbrev}/current"
+    data = requests.get(url, headers=HEADERS, timeout=20).json()
+    players = []
+
+    for group in ["forwards", "defensemen", "goalies"]:
+        for p in data.get(group, []):
+            players.append(p)
+
+    return players
+
+def get_player_stats(player_id):
+    season = "20242025"
+    url = f"https://api-web.nhle.com/v1/player/{player_id}/stats?season={season}"
+    r = requests.get(url, headers=HEADERS, timeout=20)
+    if r.status_code != 200:
+        return None
+
+    data = r.json()
+    if "splits" not in data or not data["splits"]:
+        return None
+
+    return data["splits"][0]["stat"]
 
 def main():
-    print("Stahuji NHL data + formu hráčů...")
+    print("Stahuji NHL data (nové API)...")
 
-    all_players = []
-
-    teams = requests.get(
-        "https://statsapi.web.nhl.com/api/v1/teams",
-        timeout=20
-    ).json()["teams"]
+    rows = []
+    teams = get_teams()
 
     for team in teams:
-        team_id = team["id"]
-        team_name = team["name"]
-        print(f"→ {team_name}")
+        print(f"→ {team['name']}")
+        roster = get_roster(team["id"])
 
-        roster = requests.get(
-            f"https://statsapi.web.nhl.com/api/v1/teams/{team_id}/roster",
-            timeout=20
-        ).json()["roster"]
-
-        for r in roster:
-            player_id = r["person"]["id"]
-            player_name = r["person"]["fullName"]
-
-            # sezónní statistiky
-            stats = requests.get(
-                f"https://statsapi.web.nhl.com/api/v1/people/"
-                f"{player_id}/stats?stats=statsSingleSeason",
-                timeout=20
-            ).json()["stats"][0]["splits"]
-
+        for p in roster:
+            stats = get_player_stats(p["id"])
             if not stats:
                 continue
 
-            stat = stats[0]["stat"]
-            games = stat.get("games", 0)
-            goals = stat.get("goals", 0)
-            points = stat.get("points", 0)
+            games = stats.get("gamesPlayed", 0)
+            goals = stats.get("goals", 0)
+            points = stats.get("points", 0)
 
             if games == 0:
                 continue
 
-            # forma – poslední zápasy
-            logs = requests.get(
-                f"https://statsapi.web.nhl.com/api/v1/people/"
-                f"{player_id}/stats?stats=gameLog",
-                timeout=20
-            ).json()["stats"][0]["splits"]
-
-            last5 = logs[:5]
-            last10 = logs[:10]
-
-            g5 = sum(g["stat"].get("goals", 0) for g in last5)
-            p5 = sum(g["stat"].get("points", 0) for g in last5)
-
-            g10 = sum(g["stat"].get("goals", 0) for g in last10)
-            p10 = sum(g["stat"].get("points", 0) for g in last10)
-
-            all_players.append({
-                "team": team_name,
-                "player": player_name,
+            rows.append({
+                "team": team["name"],
+                "player": f"{p['firstName']['default']} {p['lastName']['default']}",
                 "games": games,
                 "goals": goals,
-                "points": points,
-                "gpg_last5": safe_div(g5, len(last5)),
-                "ppg_last5": safe_div(p5, len(last5)),
-                "gpg_last10": safe_div(g10, len(last10)),
-                "ppg_last10": safe_div(p10, len(last10)),
+                "points": points
             })
 
-            time.sleep(0.05)
-
-    df = pd.DataFrame(all_players)
+    df = pd.DataFrame(rows)
     df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8")
 
-    print("HOTOVO")
-    print(f"Hráčů: {len(df)}")
-    print(f"Soubor uložen: {OUTPUT_FILE}")
+    print(f"HOTOVO – hráčů: {len(df)}")
+    print(f"Uloženo do {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()
