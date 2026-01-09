@@ -1,71 +1,85 @@
-import requests
 import pandas as pd
 
 OUTPUT_FILE = "nhl_players.csv"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+SEASON = 2024
 
-def get_teams():
-    url = "https://api-web.nhle.com/v1/standings/now"
-    r = requests.get(url, headers=HEADERS, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-
-    teams = {}
-    for t in data.get("standings", []):
-        try:
-            abbr = t["teamAbbrev"]["default"]
-            name = t["teamName"]["default"]
-            teams[abbr] = name
-        except Exception:
-            continue
-    return teams
-
-def get_roster(team_abbr):
-    try:
-        url = f"https://api-web.nhle.com/v1/roster/{team_abbr}/current"
-        r = requests.get(url, headers=HEADERS, timeout=30)
-        if r.status_code != 200:
-            return []
-        data = r.json()
-
-        players = []
-        for group in ["forwards", "defensemen"]:
-            for p in data.get(group, []):
-                try:
-                    players.append({
-                        "id": p["id"],
-                        "name": f"{p['firstName']['default']} {p['lastName']['default']}"
-                    })
-                except Exception:
-                    continue
-        return players
-    except Exception:
-        return []
-
-def get_player_stats(player_id):
-    try:
-        url = f"https://api-web.nhle.com/v1/player/{player_id}/landing"
-        r = requests.get(url, headers=HEADERS, timeout=30)
-        if r.status_code != 200:
-            return None
-
-        data = r.json()
-        stats = data.get("featuredStats", {}).get("regularSeason", {})
-
-        games = stats.get("gamesPlayed", 0)
-        goals = stats.get("goals", 0)
-        points = stats.get("points", 0)
-
-        if not games or games == 0:
-            return None
-
-        return {
-            "games": games,
-            "goals": goals,
-            "points": points
-        }
-    except Exception:
-        return None
+TEAMS = {
+    "ANA": "Anaheim Ducks",
+    "BOS": "Boston Bruins",
+    "BUF": "Buffalo Sabres",
+    "CGY": "Calgary Flames",
+    "CAR": "Carolina Hurricanes",
+    "CHI": "Chicago Blackhawks",
+    "COL": "Colorado Avalanche",
+    "CBJ": "Columbus Blue Jackets",
+    "DAL": "Dallas Stars",
+    "DET": "Detroit Red Wings",
+    "EDM": "Edmonton Oilers",
+    "FLA": "Florida Panthers",
+    "LAK": "Los Angeles Kings",
+    "MIN": "Minnesota Wild",
+    "MTL": "Montreal Canadiens",
+    "NSH": "Nashville Predators",
+    "NJD": "New Jersey Devils",
+    "NYI": "New York Islanders",
+    "NYR": "New York Rangers",
+    "OTT": "Ottawa Senators",
+    "PHI": "Philadelphia Flyers",
+    "PIT": "Pittsburgh Penguins",
+    "SJS": "San Jose Sharks",
+    "SEA": "Seattle Kraken",
+    "STL": "St. Louis Blues",
+    "TBL": "Tampa Bay Lightning",
+    "TOR": "Toronto Maple Leafs",
+    "VAN": "Vancouver Canucks",
+    "VGK": "Vegas Golden Knights",
+    "WSH": "Washington Capitals",
+    "WPG": "Winnipeg Jets"
+}
 
 def main():
-    print("Stahuji NHL data – BULLETPROOF VE
+    print("Stahuji NHL data z hockey-reference.com")
+
+    rows = []
+
+    for abbr, team_name in TEAMS.items():
+        url = f"https://www.hockey-reference.com/teams/{abbr}/{SEASON}.html"
+        print(f"→ {team_name}")
+
+        try:
+            tables = pd.read_html(url, attrs={"id": "skaters"})
+            df = tables[0]
+
+            df.columns = df.columns.droplevel(0)
+            df = df.dropna(subset=["Player"])
+
+            df = df.rename(columns={
+                "Player": "player",
+                "GP": "games",
+                "G": "goals",
+                "PTS": "points"
+            })
+
+            df["team"] = team_name
+            df = df[["team", "player", "games", "goals", "points"]]
+
+            for col in ["games", "goals", "points"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+            df = df.dropna()
+            rows.append(df)
+
+        except Exception as e:
+            print(f"⚠️ Chyba u týmu {team_name}: {e}")
+
+    if not rows:
+        raise RuntimeError("Nepodařilo se načíst žádná data")
+
+    final_df = pd.concat(rows, ignore_index=True)
+    final_df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8")
+
+    print(f"HOTOVO – hráčů: {len(final_df)}")
+    print(f"Uloženo do {OUTPUT_FILE}")
+
+if __name__ == "__main__":
+    main()
